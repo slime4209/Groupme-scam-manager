@@ -88,7 +88,7 @@ def kick_user(group_id, user_id, token):
         return remove_member(group_id, membership_id, token)
     return False
 
-@app.route('/app', methods=['POST'])
+@app.route('/', methods=['POST'])
 def webhook():
     event = request.get_json()
     context = None  # Context is often used in cloud functions, not needed here
