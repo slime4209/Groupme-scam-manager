@@ -5,7 +5,7 @@ import os
 import requests
 import random
 import json
-
+import logging
 
 API_ROOT = 'https://api.groupme.com/v3/'
 FLAGGED_PHRASES = (
@@ -63,7 +63,16 @@ def kick_user(group_id, user_id, token):
         return remove_member(group_id, membership_id, token)
     return False
 
-
+# this is for logging purpose; I want to collect the scam messages to see any patterns
+# directly logs the messages into Heroku's log streams
+# log can be accessed using command:
+#     heroku logs --tail
+def log_deleted_message_to_heroku_logs(message):
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    logger.info(f"Time: {timestamp} | User: {message['name']} | Message: {message['text']}")
+    
 
 
 def receive(event, context):
