@@ -88,17 +88,19 @@ def kick_user(group_id, user_id, token):
         return remove_member(group_id, membership_id, token)
     return False
 
-@app.route('/')
+@app.route('/', methods=['POST'])  # Ensure this route handles POST requests
 def webhook():
-    event = request.get_json()
-    context = None  # Context is often used in cloud functions, not needed here
-    return receive(event, context)
+    if request.is_json:  # Check if the incoming request is JSON
+        event = request.get_json()
+        return receive(event)
+    else:
+        return jsonify({'error': 'Request must be JSON'}), 400
 
     
 
 
 def receive(event, context):
-    message = event['body']  # Assuming event['body'] contains the message JSON
+    message = event
     bot_id = message['bot_id']
 
     for phrase in FLAGGED_PHRASES:
