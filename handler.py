@@ -13,6 +13,7 @@ import os
 import requests
 import random
 import json
+import sqlite3
 
 app = Flask(__name__)
 
@@ -86,12 +87,29 @@ def delete_message(group_id, message_id):
     response = requests.delete(f'{API_ROOT}conversations/{group_id}/messages/{message_id}', params={'token': token})
     return response.ok
 
+def add_db_entry(timestamp, username, user_id, message):
+    # Use context manager
+    with sqlite3.connect('scam_messages.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {bot_id} (timestamp INTEGER PRIMARY KEY, username TEXT, user_id INTEGER, message TEXT)')
+        # adds entry to database
+        cursor.execute(
+            f"INSERT INTO {bot_id} VALUES (?, ?, ?, ?)",
+            (timestamp, username, user_id, message)
+        )
+        conn.commit()
+    print('Connection to database closed')
+    # Connection is automatically closed here
+
 # ===================================================================================================================
 
 def receive(event):
     message = event #json.loads(event['text'])
     for phrase in FLAGGED_PHRASES:
         if phrase in message['text'].lower() and new_user(message['group_id'], message['user_id'], message['created_at']:
+            add_db_entry(message['created_at'], message['name'], message['user_id'], message['text'])
+            
+            # kicks user and deletes message
             if kick_user(message['group_id'], message['user_id']):
                 delete_message(message['group_id'], message['id'])
                 send('Kicked ' + message['name'] + ' due to apparent spam post.', bot_id)
@@ -99,7 +117,7 @@ def receive(event):
                 print('Kick attempt failed or user is an admin.')
             break
             print(group)
-
+            
     return {
         'statusCode': 200,
         'body': 'ok'
