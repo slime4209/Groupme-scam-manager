@@ -1,3 +1,10 @@
+# Note: membership_id and user_id are two different things! The scope of those two are different.
+#     membership_id (or often just represented as "id"): 
+#         ID used specifically in the group only, meaning a user will have the same # of membership_id
+#         as the # of group chats they belong to.
+#     user_id: 
+#         ID used in the entire GroupMe, meaning a user will have only one user_id assigned to them.
+
 import sys
 sys.path.insert(0, 'vendor')
 
@@ -48,34 +55,43 @@ def get_membership_id(group_id, user_id):
     memberships = get_memberships(group_id)
     memberships = memberships['response']
     memberships = memberships['members']
-    print(memberships)
     for membership in memberships:
         if membership['user_id'] == user_id:
             return membership['id']
     return None
 
-def remove_member(group_id, membership_id):
-    response = requests.post(f'{API_ROOT}groups/{group_id}/members/{membership_id}/remove?token={token}') #, params={'token': token})
-    print('Attempted to kick user, got response:')
-    print(response.text)
-    return response.ok  # Return whether the request was successful
+def kick_user(group_id, user_id):
+    membership_id = get_membership_id(group_id, user_id)
+    if membership_id:
+        response = requests.post(f'{API_ROOT}groups/{group_id}/members/{membership_id}/remove?token={token}') #, params={'token': token})
+        print('Attempted to kick user, got response:')
+        print(response.text)
+        return response.ok  # Return whether the request was successful
+    return False
 
+# tries to figure out if the user is new by seeing how long they have existed in the group chat
+# GroupMe's timestamps are in seconds
+def new_user(group_id, user_id, message_time):
+    messages = requests.get(f'{API_ROOT}groups/{group_id}/messages?token={token}')['response']['messages']
+    joined_time = 0
+    for message in messages:
+        if message['event']['type'] == "membership.announce.joined" and message['event']['data']['user']['id'] == user_id:
+            joined_time = message['created_at']
+            break
+    if (message_time - joined_time) <= 259200: # 259200 seconds, or 3 days
+        return True
+    return False    
 
 def delete_message(group_id, message_id):
     response = requests.delete(f'{API_ROOT}conversations/{group_id}/messages/{message_id}', params={'token': token})
     return response.ok
 
-
-def kick_user(group_id, user_id):
-    membership_id = get_membership_id(group_id, user_id)
-    if membership_id:
-        return remove_member(group_id, membership_id)
-    return False
+# ===================================================================================================================
 
 def receive(event):
     message = event #json.loads(event['text'])
     for phrase in FLAGGED_PHRASES:
-        if phrase in message['text'].lower():
+        if phrase in message['text'].lower() and new_user(message['group_id'], message['user_id'], message['created_at']:
             if kick_user(message['group_id'], message['user_id']):
                 delete_message(message['group_id'], message['id'])
                 send('Kicked ' + message['name'] + ' due to apparent spam post.', bot_id)
