@@ -71,30 +71,62 @@ def kick_user(group_id, user_id):
     return False
 
 # tries to figure out if the user is new by seeing how long they have existed in the group chat
-# GroupMe's timestamps are in seconds
-def new_user(group_id, user_id, message_time):
-    messages = requests.get(f'{API_ROOT}groups/{group_id}/messages?token={token}')['response']['messages']
-    joined_time = 0
-    for message in messages:
-        if message['event']['type'] == "membership.announce.joined" and message['event']['data']['user']['id'] == user_id:
-            joined_time = message['created_at']
-            break
-    if (message_time - joined_time) <= 259200: # 259200 seconds, or 3 days
-        return True
-    return False    
+# GroupMe's timestamps are in seconds (epoch)
+def new_user(message): 
+    with sqlite3.connect('new_users.db') as conn:
+        cursor = conn.cursor()
+        user_id = int(message['user_id'])
+        try: 
+            cursor.execute(f"SELECT timestamp FROM users WHERE user_id = {user_id} ORDER BY timestamp DESC LIMIT 1")
+            row = cursor.fetchone() 
+        except sqlite3.OperationalError: 
+            print('Table doesnt exist, so not new user')
+            return False
+        if row:  
+            if (message['created_at'] - row[0]) <= 259200:
+                print(message['created_at'], row[0], message['user_id'])
+                print('New user spotted')
+                return True
+            else: 
+                print(message['created_at'], row[0], message['user_id'])
+                print('Not new user')
+                return False
+        else:
+            print('No matching user found.')
+            return False
+    print('Connection to database closed')
+    # Connection is automatically closed here
 
 def delete_message(group_id, message_id):
     response = requests.delete(f'{API_ROOT}conversations/{group_id}/messages/{message_id}', params={'token': token})
     return response.ok
 
+def add_user_db_entry(timestamp, username, user_id, event_name):
+    with sqlite3.connect('new_users.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (timestamp INTEGER, username TEXT, user_id INTEGER, event_name TEXT, PRIMARY KEY (timestamp, user_id))')
+        print('User Table created')
+        # adds entry to database
+        cursor.execute(
+            f"INSERT INTO users VALUES (?, ?, ?, ?)",
+            (timestamp, username, user_id, event_name)
+        )
+        print('user info inserted')
+        conn.commit()
+        cursor.execute(f"DELETE FROM users WHERE timestamp < strftime('%s', 'now', '-30 days')")
+        print('old users deleted')
+        conn.commit()
+    print('Connection to database closed')
+    # Connection is automatically closed here
+
 def add_db_entry(timestamp, username, user_id, message):
     # Use context manager
     with sqlite3.connect('scam_messages.db') as conn:
         cursor = conn.cursor()
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {bot_id} (timestamp INTEGER PRIMARY KEY, username TEXT, user_id INTEGER, message TEXT)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS scarab (timestamp INTEGER PRIMARY KEY, username TEXT, user_id INTEGER, message TEXT)')
         # adds entry to database
         cursor.execute(
-            f"INSERT INTO {bot_id} VALUES (?, ?, ?, ?)",
+            "INSERT INTO scarab VALUES (?, ?, ?, ?)",
             (timestamp, username, user_id, message)
         )
         conn.commit()
@@ -104,14 +136,35 @@ def add_db_entry(timestamp, username, user_id, message):
 # ===================================================================================================================
 
 def receive(event):
-    message = event #json.loads(event['text'])
+    # message = event #json.loads(event['text'])
+    print(event)
+  
+    if event['sender_id'] == "system":
+        print('event found')
+        group_id = event['group_id']
+        messages = requests.get(f'{API_ROOT}groups/{group_id}/messages?token={token}').json()
+        messages = messages['response']['messages']
+        for message in messages: 
+            if event['id'] == message['id']:
+                if message['event']['type'] == "membership.announce.added":
+                    for user in message['event']['data']['added_users']:
+                        add_user_db_entry(message['created_at'], 
+                                          user['nickname'], 
+                                          user['id'], 
+                                          'membership.announce.added')
+                elif message['event']['type'] == "membership.announce.joined":
+                    add_user_db_entry(message['created_at'], 
+                                      message['event']['data']['user']['nickname'], 
+                                      message['event']['data']['user']['id'], 
+                                      'membership.announce.joined')
+            
     for phrase in FLAGGED_PHRASES:
-        if phrase in message['text'].lower() and new_user(message['group_id'], message['user_id'], message['created_at']:
-            add_db_entry(message['created_at'], message['name'], message['user_id'], message['text'])
+        if phrase in event['text'].lower() and new_user(event):
+            add_db_entry(event['created_at'], event['name'], event['user_id'], event['text'])
             
             # kicks user and deletes message
-            if kick_user(message['group_id'], message['user_id']):
-                delete_message(message['group_id'], message['id'])
+            if kick_user(event['group_id'], event['user_id']):
+                delete_message(event['group_id'], event['id'])
                 send('Kicked ' + message['name'] + ' due to apparent spam post.', bot_id)
             else:
                 print('Kick attempt failed or user is an admin.')
