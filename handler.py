@@ -43,9 +43,10 @@ FLAGGED_PHRASES = (
     'hentai',
 )
 
-# Edit these variables to customize your groupme auth token and bot id
-token = '<your groupme auth token>'
-bot_id = '<your groupme bot id>'
+# Edit these variables to customize your groupme auth token, bot id, and subgroup id if you have a topic created in the chat
+token = ''
+bot_id = ''
+sub_group_id = 0
 
 def get_memberships(group_id):
     response = requests.get(f'{API_ROOT}groups/{group_id}?token={token}')
@@ -138,6 +139,7 @@ def add_db_entry(timestamp, username, user_id, message):
 def receive(event):
     # message = event #json.loads(event['text'])
     print(event)
+    user_kicked = False
   
     if event['sender_id'] == "system":
         print('event found')
@@ -164,13 +166,20 @@ def receive(event):
             
             # kicks user and deletes message
             if kick_user(event['group_id'], event['user_id']):
+                user_kicked = True
                 delete_message(event['group_id'], event['id'])
-                send('Kicked ' + message['name'] + ' due to apparent spam post.', bot_id)
+                send('Kicked ' + event['name'] + ' due to apparent spam post.', bot_id)
             else:
                 print('Kick attempt failed or user is an admin.')
             break
             print(group)
-            
+
+    submessages = requests.get(f'{API_ROOT}groups/{sub_group_id}/messages?token={token}').json()
+    submessages = submessages['response']['messages']
+    for submessage in submessages: 
+        if submessage['user_id'] == event['user_id'] and user_kicked == True:
+            delete_message(submessage['group_id'], submessage['id'])
+  
     return {
         'statusCode': 200,
         'body': 'ok'
