@@ -191,7 +191,7 @@ def webhook():
 # web interface stuff
 @app.route('/index')
 def home():
-    return render_template('webtest.html')
+    return render_template('index.html')
 
 # Route to fetch new_users database content
 @app.route('/new-users-content', methods=['GET'])
