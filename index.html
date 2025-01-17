@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scarab Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        nav {
+            margin-bottom: 20px;
+        }
+        .tab {
+            display: none;
+        }
+        .tab.active {
+            display: block;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+        }
+        .tabs button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: #0056B3;
+            margin-right: 2px;
+        }
+        .tabs button.active {
+            background: #ffffff;
+            border-bottom: 2px solid #007BFF;
+            color: #007BFF;
+        }
+        form {
+            max-width: 400px;
+            margin-top: 20px;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="tabs">
+            <button class="tab-button active" data-target="home">Home</button>
+            <button class="tab-button" data-target="new-users-db">New-Users DB</button>
+            <button class="tab-button" data-target="scam-msg-db">Scam-Msg DB</button>
+        </div>
+    </nav>
+
+    <div id="home" class="tab active">
+        <h2>Welcome to Scarab Manager!</h2>
+	<h3>May Khepri provide you with much blessing and send an army of scarabs to smite your enemies. </h3>
+    <img src="https://media1.tenor.com/m/iIbhiy0Ej1sAAAAd/whatever-go-my-scarab-scarab.gif">
+    </div>
+
+    <div id="new-users-db" class="tab">
+        <h2>New Users Database Content</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp (UTC)</th>
+                    <th>Username</th>
+                    <th>User ID</th>
+                    <th>Event Name</th>
+                </tr>
+            </thead>
+            <tbody id="new-users-content">
+                <!-- Database rows will be dynamically loaded here -->
+            </tbody>
+        </table>
+    </div>
+
+    <div id="scam-msg-db" class="tab">
+        <h2>Scam Messages Database Content</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp (UTC)</th>
+                    <th>Username</th>
+                    <th>User ID</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody id="scam-msg-content">
+                <!-- Database rows will be dynamically loaded here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const tabButtons = document.querySelectorAll(".tab-button");
+            const tabs = document.querySelectorAll(".tab");
+
+            tabButtons.forEach(button => {
+                button.addEventListener("click", () => {
+                    tabButtons.forEach(btn => btn.classList.remove("active"));
+                    button.classList.add("active");
+
+                    tabs.forEach(tab => tab.classList.remove("active"));
+                    document.getElementById(button.getAttribute("data-target")).classList.add("active");
+                });
+            });
+            
+            // Fetch and display new_users database content 
+            fetch('/new-users-content')
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById('new-users-content');
+                    data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${row.timestamp}</td><td>${row.username}</td><td>${row.user_id}</td><td>${row.event_name}</td>`;
+                        tableBody.appendChild(tr);
+                    });
+                });
+            
+            // Fetch and display scam_messages database content 
+            fetch('/scam-msg-content')
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById('scam-msg-content');
+                    data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${row.timestamp}</td><td>${row.username}</td><td>${row.user_id}</td><td>${row.message}</td>`;
+                        tableBody.appendChild(tr);
+                    });
+                });
+        });
+    </script>
+</body>
+</html>
