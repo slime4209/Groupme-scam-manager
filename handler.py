@@ -8,45 +8,30 @@
 import sys
 sys.path.insert(0, 'vendor')
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, render_template, jsonify
 import os
 import requests
 import random
 import json
 import sqlite3
+import configparser
+import ast
 
 app = Flask(__name__)
 
 API_ROOT = 'https://api.groupme.com/v3/'
-FLAGGED_PHRASES = (
-    'essay written by professionals',
-    'paper writing service',
-    'academic writing service',
-    'student paper assignments',
-    'getting professional academic help from us is easy',
-    'cutt.us',
-    'inyurl.com/muxz7h',
-    'u.to/xavt',
-    'we write your papers',
-    'best in the writing service industry',
-    'side job offer for you which',
-    'getting $1000 within week',
-    'lost my daughter to cancer about a week ago,she was',
-    'to cancer about a week ago',
-    'play station 5',
-    'ps5',
-    'ticket',
-    'tickets',
-    'essay writer',
-    'super writer',
-    'cute writer',
-    'hentai',
-)
 
-# Edit these variables to customize your groupme auth token, bot id, and subgroup id if you have a topic created in the chat
-token = ''
-bot_id = ''
-sub_group_id = 0
+# Load the config.ini file
+config = configparser.ConfigParser()
+config.read("config.ini")
+
+token = config.get("Settings", "TOKEN")
+bot_id = config.get("Settings", "BOT_ID")
+sub_group_id = config.getint("Settings", "SUB_GROUP_ID") 
+cap_time = config.getint("Settings", "CAP_TIME")
+flagged_phrases_str = config.get("Settings", "FLAGGED_PHRASES")
+flagged_phrases = flagged_phrases_str.split(",\n")
+
 
 def get_memberships(group_id):
     response = requests.get(f'{API_ROOT}groups/{group_id}?token={token}')
@@ -74,7 +59,7 @@ def kick_user(group_id, user_id):
 # tries to figure out if the user is new by seeing how long they have existed in the group chat
 # GroupMe's timestamps are in seconds (epoch)
 def new_user(message): 
-    with sqlite3.connect('new_users.db') as conn:
+    with sqlite3.connect('databases/new_users.db') as conn:
         cursor = conn.cursor()
         user_id = int(message['user_id'])
         try: 
@@ -84,7 +69,7 @@ def new_user(message):
             print('Table doesnt exist, so not new user')
             return False
         if row:  
-            if (message['created_at'] - row[0]) <= 259200:
+            if (message['created_at'] - row[0]) <= cap_time:
                 print(message['created_at'], row[0], message['user_id'])
                 print('New user spotted')
                 return True
@@ -103,7 +88,7 @@ def delete_message(group_id, message_id):
     return response.ok
 
 def add_user_db_entry(timestamp, username, user_id, event_name):
-    with sqlite3.connect('new_users.db') as conn:
+    with sqlite3.connect('databases/new_users.db') as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (timestamp INTEGER, username TEXT, user_id INTEGER, event_name TEXT, PRIMARY KEY (timestamp, user_id))')
         print('User Table created')
@@ -122,7 +107,7 @@ def add_user_db_entry(timestamp, username, user_id, event_name):
 
 def add_db_entry(timestamp, username, user_id, message):
     # Use context manager
-    with sqlite3.connect('scam_messages.db') as conn:
+    with sqlite3.connect('databases/scam_messages.db') as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS scarab (timestamp INTEGER PRIMARY KEY, username TEXT, user_id INTEGER, message TEXT)')
         # adds entry to database
@@ -135,7 +120,7 @@ def add_db_entry(timestamp, username, user_id, message):
     # Connection is automatically closed here
 
 # ===================================================================================================================
-
+# the REALLY important functions
 def receive(event):
     # message = event #json.loads(event['text'])
     print(event)
@@ -160,7 +145,7 @@ def receive(event):
                                       message['event']['data']['user']['id'], 
                                       'membership.announce.joined')
             
-    for phrase in FLAGGED_PHRASES:
+    for phrase in flagged_phrases:
         if phrase in event['text'].lower() and new_user(event):
             add_db_entry(event['created_at'], event['name'], event['user_id'], event['text'])
             
@@ -195,7 +180,6 @@ def send(text, bot_id):
     }
     r = requests.post(url, json=message)
 
-
 @app.route('/', methods=['POST'])  # Ensure this route handles POST requests
 def webhook():
     if request.is_json:  # Check if the incoming request is JSON
@@ -204,5 +188,37 @@ def webhook():
     else:
         return jsonify({'error': 'Request must be JSON'}), 400
 
+# ==========================================================================================
+# web interface stuff
+@app.route('/index')
+def home():
+    return render_template('webtest.html')
+
+# Route to fetch new_users database content
+@app.route('/new-users-content', methods=['GET'])
+def new_users_content():
+    # Example database content
+    with sqlite3.connect('databases/new_users.db') as conn:
+        conn.row_factory = sqlite3.Row  
+        cursor = conn.cursor()
+        cursor.execute("SELECT datetime(timestamp, 'unixepoch') AS timestamp, * FROM users")
+        rows = cursor.fetchall() 
+        dict_row = [dict(row) for row in rows]
+        return jsonify(dict_row)
+
+# Route to fetch scam_messages database content
+@app.route('/scam-msg-content', methods=['GET'])
+def scam_msg_content():
+    # Example database content
+    with sqlite3.connect('databases/scam_messages.db') as conn:
+        conn.row_factory = sqlite3.Row  
+        cursor = conn.cursor()
+        cursor.execute("SELECT datetime(timestamp, 'unixepoch') AS timestamp, * FROM scarab")
+        rows = cursor.fetchall() 
+        dict_row = [dict(row) for row in rows]
+        return jsonify(dict_row)
+
+# =========================================================================================
+# Flask stuff 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
