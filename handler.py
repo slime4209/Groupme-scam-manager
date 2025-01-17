@@ -15,7 +15,6 @@ import random
 import json
 import sqlite3
 import configparser
-import ast
 
 app = Flask(__name__)
 
